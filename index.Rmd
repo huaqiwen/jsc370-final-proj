@@ -1,0 +1,117 @@
+---
+title: "Beijing PM2.5 Analysis"
+author: "Qiwen Hua"
+output: 
+    html_document:
+        toc: TRUE
+        toc_float: TRUE
+---
+<br>
+
+```{r setup, message=FALSE, echo=FALSE, warning=FALSE}
+
+library(data.table)
+library(tidyverse)
+library(dplyr)
+library(plotly)
+library(DT)
+library(knitr)
+library(lubridate)
+
+# Initialize code chunk options
+opts_chunk$set(
+  warning = FALSE,
+  message = FALSE,
+  eval=TRUE,
+  echo = FALSE,
+  cache = FALSE,
+  fig.width = 7, 
+  fig.align = 'center',
+  fig.asp = 0.618,
+  out.width = "700px",
+  class.source = "code-r")
+```
+
+```{css, echo = FALSE}
+.code-r { /* Code block */
+  font-size: 15px;
+}
+
+.code-r-small { /* Code block */
+  font-size: 10px;
+}
+```
+
+<br>
+
+## Overview
+
+The dataset that we will use throughout this analysis comes from the [UCI Machine Learning Repository](https://archive.ics.uci.edu/ml/datasets/Beijing+PM2.5+Data) gathered by Liang, X. et al (2015). The dataset contains hourly meteorological data from 2010 Jan 1st to 2014 Dec 31st of US Embassy in Beijing, which includes information such as the PM2.5 concentration, dew point, temperature, wind speed, etc. Among those features, listed below are our interested variables and their corresponding units: 
+
+  1. PM2.5 concentration (μg/m³);
+  2. Hour of the day;
+  3. Dew point (°C);
+  4. Temperature (°C);
+  5. Wind speed (m/s).
+  
+Building from the raw data, I also created some categorical variables for later uses including "low", "normal", "high" categories for meteorological metrics, time of the day, and air quality. 
+  
+Note that the above information is gather by myself in *Association between PM2.5 concentration and other meteorological factors* submitted for JSC370 midterm project. 
+
+```{r load-data}
+source("process_pm25_data.R")
+```
+
+<br>
+
+## General Trend
+
+The figure below shows the trend of PM2.5 concentration in Beijing, China along with a smoothened trend line for built with GAM. 
+
+```{r plot1, class.source="code-r-small"}
+# Timeseries plot
+p1_timeseries_gg <- data %>%
+  ggplot(aes(datetime, pm25)) +
+  ggtitle("Time series of PM2.5 concentration in Beijing, China") +
+  geom_line() +
+  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs", k = 40))
+
+ggplotly(p1_timeseries_gg)
+```
+
+<br>
+
+## PM2.5 and Temperature
+
+Now we will look examine the relationship between PM2.5 concentration and temperature. By previous studies done by myself (Hua, 2022), time of the day can significantly influence Pm2.5. Therefore, we will draw three trend lines (PM2.5 concentration vs. temperature) grouped by time of the day.
+
+```{r plot2, class.source="code-r-small"}
+data %>%
+  plot_ly(x = ~temp, y = ~pm25, color = ~day_part, type = "scatter")
+```
+
+The plot above shows a trend that suggests the PM2.5 concentration decreases as temperature increases. 
+
+<br>
+
+## PM2.5 and Time of the Day
+
+Here we will look at the distributions of PM2.5 concentration with histograms. Further, we will group the data by time of the day (morning, afternoon, and evening) and put the histograms side by side to see the difference. 
+
+```{r plot3, class.source="code-r-small"}
+data %>%
+  group_by(day_part) %>%
+  do(p = plot_ly(., x = ~pm25, name = ~day_part, type = "histogram")) %>%
+  subplot(nrows = 1, shareX = TRUE, shareY = TRUE)
+```
+
+From the figure above, we can see that while all PM2.5 concentration distributions are right skewed with a mode close to 0, the afternoon distribution is more skewed with and has fewer high-PM2.5 entries. 
+
+## References
+
+Liang, X., Zou, T., Guo, B., Li, S., Zhang, H., Zhang, S., Huang, H. and Chen, S. X. (2015). *Assessing Beijing's PM2.5 pollution: severity, weather impact, APEC and winter heating*. Proceedings of the Royal Society A, 471, 20150257.
+
+Hua, Qiwen. (2022). *Association between PM2.5 concentration and other meteorological factors* [Unpublished assignment submitted for JSC370]. University of Toronto.
+
+<br>
+<br>
