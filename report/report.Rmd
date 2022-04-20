@@ -1,0 +1,358 @@
+---
+title: "Association between PM2.5 concentration and other meteorological factors"
+author: "Qiwen Hua"
+date: "4/19/2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(ggplot2)
+library(kableExtra)
+library(mgcv)
+```
+
+## Introduction
+
+PM2.5, also known as fine particulate matter, is a form of air pollutant with a size of 2.5 microns or smaller. It is well accepted that a high PM2.5 concentration imposes great concerns to people's health. Many cities in the world suffer from consistently high PM2.5 concentration, especially in Beijing, China. Therefore, in this analysis, we will use a dataset of Beijing PM2.5 and other meteorological information to analyse the association between PM2.5 concentration and other measurable factors. In particular, the factors of interest are hour of the day, dew point, temperature, and wind speed.
+
+
+## Methods
+
+### Data source
+
+The dataset that we will use throughout this analysis comes from the [UCI Machine Learning Repository](https://archive.ics.uci.edu/ml/datasets/Beijing+PM2.5+Data) gathered by Liang, X. et al (2015). The dataset contains hourly meteorological data from 2010 Jan 1st to 2014 Dec 31st of US Embassy in Beijing, which includes information such as the PM2.5 concentration, dew point, temperature, wind speed, etc. Among those features, listed below are our interested variables and their corresponding units: 
+
+  1. PM2.5 concentration ($\mu$g/m$^3$);
+  2. Hour of the day;
+  3. Dew point ($^\circ$C);
+  4. Temperature ($^\circ$C);
+  5. Wind speed (m/s).
+
+```{r}
+data <- read.csv("../data/beijing-pm25.csv")
+```
+
+### Data cleaning and wrangling
+
+To answer the overall question raised in Introduction, we only need a subset of the features provided in the dataset. Namely, we need date time, PM2.5 concentration, dew point, temperature, and wind speed. Therefore, we will first use `lubridate` to create a new `datetime` variable from the `year`, `month`, `day`, and `hour` columns of the dataset, and use `dplyr` to rename and select the interested columns. 
+
+```{r}
+data <- data %>%
+  mutate(datetime = make_datetime(year, month, day, hour)) %>%
+  rename(wind_spd = Iws, dew_pt = DEWP, temp = TEMP, pm25 = pm2.5) %>%
+  select(datetime, hour, pm25, dew_pt, temp, wind_spd)
+```
+
+The dataset contains some missing values, denoted by `NA` in the imported dataset in R. Since the dataset is already large enough, we directly remove rows containing missing values instead of imputing to avoid introducing bias. We will use `tidyr` to remove such rows. 
+
+```{r}
+data <- data %>% drop_na()
+```
+
+We have now finished cleaning the data. However, to make comparisons easier in later analysis, we will create some categorical variables for some variables. We will set the categories to be `high` to values that are 1 sd above the mean, `low` to values 1 sd below the mean, and `normal` to everything else.
+
+```{r}
+tbl <- tibble()
+
+for (colname in c("dew_pt", "temp", "wind_spd")) {
+  colname_cat = paste0(colname, "_cat")
+  
+  # Compute mean and sd of the current row
+  col_mean <- mean(as.numeric(unlist(data[colname])))
+  col_sd <- sd(as.numeric(unlist(data[colname])))
+  
+  # Create categorical variable for the current row
+  data[colname_cat] <- cut(
+    as.numeric(unlist(data[colname])), 
+    breaks = c(-Inf, col_mean - col_sd, col_mean + col_sd, Inf), 
+    labels = c("low", "normal", "high")
+  )
+  
+  # Add summary statistics of the current column
+  tbl <- rbind(tbl, c(
+    min(data[colname]), 
+    max(data[colname]), 
+    round(col_mean, 2), round(col_sd, 2),
+    nrow(data[data[colname_cat] == "low",]), 
+    nrow(data[data[colname_cat] == "normal",]), 
+    nrow(data[data[colname_cat] == "high",])
+  ))
+}
+
+# Add row and column names
+tbl <- as.data.frame(tbl)
+rownames(tbl) <- c("Dew Point", "Temperature", "Windspeed")
+colnames(tbl) <- c("Min", "Max", "Mean", "SD", "Low hours", "Normal hours", "High hours")
+
+tbl %>%
+  knitr::kable(caption = "Summary statistics for interested variables") %>%
+  kable_styling()
+```
+
+In addition, we can categorize time of the day with the following rules:
+
+  1. `morning` - 00:00 to 11:59;
+  2. `afternoon` - 12:00 to 17:59;
+  3. `evening` - 18:00 to 23:59.
+  
+```{r}
+data$day_part <- cut(
+  data$hour, 
+  breaks = c(-Inf, 12, 18, Inf), 
+  labels = c("morning", "afternoon", "evening")
+)
+```
+
+Lastly, following the PM2.5 levels definition posted by Blissair, we define air quality levels base on PM2.5 concentration with the following rules:
+
+  1. `good` - 0 to 50
+  2. `moderate` - 51 to 100
+  3. `unhealthy` - 101 to 200
+  4. `very unhealthy` - 201 to 300
+  5. `hazardous` - 301 and above
+  
+```{r}
+data$air_quality <- cut(
+  data$pm25, 
+  breaks = c(-Inf, 50, 100, 200, 300, Inf),
+  labels = c("good", "moderate", "unhealthy", "very unhealthy", "hazardous")
+)
+
+tibble(
+  "Min" = min(data$pm25),
+  "Max" = max(data$pm25),
+  "Good hours" = nrow(data[data$air_quality == "good",]),
+  "Moderate hours" = nrow(data[data$air_quality == "moderate",]),
+  "Unhealthy hours" = nrow(data[data$air_quality == "unhealthy",]),
+  "Very unhealthy hours" = nrow(data[data$air_quality == "very unhealthy",]),
+  "Hazardous hours" = nrow(data[data$air_quality == "hazardous",])
+) %>% 
+  knitr::kable(caption = "Summary statistics for PM2.5 concentrations") %>%
+  kable_styling()
+```
+
+Now we can take a glimpse at the data:
+
+```{r}
+head(data, 5) %>% 
+  knitr::kable(caption = "First 5 rows of the cleaned dataset") %>%
+  kable_styling()
+```
+
+### Data exploration tools
+
+With the data cleaning and wrangling process finished, we can start conducting analysis with the processed dataset. In the next section, we will try to answer the goal of this analysis, finding out the association between PM2.5 concentration and some measurable factors, with methods such as creating figures with `ggplot2`, group and summarise with `dplyr`, and constructing generalized linear models with the `mgcv` implementation of `gam`. 
+
+
+## Preliminary Results
+
+### Overall trend of PM2.5 concentration
+
+First, we can take a look at the time series of Beijing PM2.5 concentration over the five years (2010 to 2014, inclusive). This gives us an overview of annual and seasonal trends of PM2.5 concentrations. Since the variance is quite high, we will add a smooth line generated from a cubic regression spline bases with 40 knots (represented by the blue line in the figure below). 
+
+```{r}
+data %>%
+  ggplot(aes(datetime, pm25)) +
+  ggtitle("Time series of PM2.5 concentration in Beijing, China") +
+  geom_line() +
+  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs", k = 40))
+```
+
+The graph displays no obvious seasonal nor annual trends, suggesting that the PM2.5 concentration may not be associated with season or year. 
+
+### Summary of PM2.5 concentration grouped by various factors
+
+To give us an overview on the association between PM2.5 concentration and our factors of interest (e.g. wind speed), we can take a look at the means and standard deviations of PM2.5 concentrations grouped by our factors of interest, i.e., part of the day, dew point, temperature, and wind speed.  
+
+#### Grouped by part of the day
+
+```{r}
+data %>%
+  group_by(day_part) %>%
+  summarise(
+    "PM2.5 mean" = mean(pm25),
+    "PM2.5 sd"   = sd(pm25)
+  ) %>%
+  knitr::kable() %>%
+  kable_styling()
+```
+
+To the contrary of many people's intuition, PM2.5 concentrations is the lowest during the afternoon and highest during the morning and evening. This suggests that the air quality is worse at night. We will try to further varify this later using a generalized linear model. 
+
+#### Grouped by temperature
+
+```{r}
+data %>%
+  group_by(temp_cat) %>%
+  summarise(
+    "PM2.5 mean" = mean(pm25),
+    "PM2.5 sd"   = sd(pm25)
+  ) %>%
+  knitr::kable() %>%
+  kable_styling()
+```
+
+The summary statistics suggests that the PM2.5 decreases as temperature increases. This may be due to the fact that low temperatures traps small particles (PM2.5) more than high temperatures which cause the air to move upwards. This result hints a possible explanation to the observation above: the temperature in the afternoon are usually the highest which yields a lower PM2.5 concentration. 
+
+#### Grouped by dew point
+
+```{r}
+data %>%
+  group_by(dew_pt_cat) %>%
+  summarise(
+    "PM2.5 mean" = mean(pm25),
+    "PM2.5 sd"   = sd(pm25)
+  ) %>%
+  knitr::kable() %>%
+  kable_styling()
+```
+
+Dew point values are the temperatures the air needs to be cooled to in order to have full relative humidity, i.e., higher dew points means higher amount of moisture in the air. The summary statistics here shows that the PM2.5 concentration is much lower during hours with low moisture in the air. 
+
+#### Grouped by wind speed
+
+```{r}
+data %>%
+  group_by(wind_spd_cat) %>%
+  summarise(
+    "PM2.5 mean" = mean(pm25),
+    "PM2.5 sd"   = sd(pm25)
+  ) %>%
+  knitr::kable() %>%
+  kable_styling()
+```
+
+Note that in section *Data cleaning and wrangling*, we fond that there are no hour in our dataset falls into the "low" wind speed category, i.e., no hour has a wind speed that is 1 sd below the wind speed mean. Therefore, our summary table here only has two rows. 
+
+From the table, we can see that hours with high wind speeds have much lower PM2.5 concentration than the hours with normal wind speed. This suggests that windy weather is associated with better air qualities, which may be due to wind being able to blow air pollutants higher up in the atmosphere.  
+
+### Stacked distribution of PM2.5 concentration by wind speed category
+
+Following from previous results, we will look into the association between PM2.5 concentration and wind speed deeper. First, we will visualize the distributions of PM2.5 concentrations stacked using the two wind speed categories. Note that since PM2.5 concentration is not normally distributed, we will instead plot the log of PM2.5 distribution. 
+
+```{r warning=FALSE}
+data %>%
+  ggplot(aes(log(pm25), fill = wind_spd_cat)) + 
+  geom_histogram(binwidth = 0.3) + 
+  labs(title = "Stacked distribution of PM2.5 concentration by wind speed") +
+  guides(fill = guide_legend(title = "Wind speed category"))
+```
+
+From the stacked histogram, we can see that the mode of the high wind speed PM2.5 concentration distribution is much smaller than the one for normal wind speed. This further suggests that high wind speed is associated with better air quality. 
+
+### Barchat of air quality by dew point
+
+Now we will investigate the assocaition between PM2.5 concentration (represented by air quality categoies) and dew points. We can visualize the association by plotting side-by-side barchats of air quality colored by dew point category. 
+
+```{r}
+data %>%
+  ggplot(aes(x = air_quality, fill = dew_pt_cat)) + 
+  geom_bar(position = "dodge") +
+  labs(title = "Barchart of air quality by dew point category") +
+  guides(fill = guide_legend(title = "Dew point category"))
+```
+
+From the plot above, we notice that the proportions of low dew point hours are much higher in good and moderate air quality hours. Combining from previous results in section *Summary of PM2.5 concentration grouped by various factors*, the dataset suggests that low dew points is associated with lower PM2.5 concentrations. 
+
+### Generative additive model of hourly PM2.5 mean
+
+Now we want to further investigate the association between the hour of the day and POM2.5 concentration. Previous results obtained in section *Summary of PM2.5 concentration grouped by various factors* shows that afternoon hours have the relatively low PM2.5 concentrations, and we want to verify that by visualizations and regressions. 
+
+First, we will create a new dataset consisting hourly PM2.5 concentration means of the entire dataset. Here are the first 3 rows of the new dataset. 
+
+```{r}
+# Create new dataset by grouping by hours and aggregating the mean on PM2.5
+hrly_pm25_mean <- data %>%
+  group_by(hour) %>%
+  summarise_at(vars(pm25), list(mean = mean))
+
+head(hrly_pm25_mean, 3) %>% 
+  knitr::kable(caption = "First 3 rows of the hourly PM2.5 mean dataset", 
+               align = c("l", "r")) %>%
+  kable_styling()
+```
+
+Now we can plot the means and build a generative additive model using a cubic regression spline bases with 5 knots (represented by the blue line the figure below). 
+
+```{r}
+hrly_pm25_mean %>%
+  ggplot(aes(hour, mean)) +
+  geom_point() +
+  ylab("PM2.5 mean") +
+  ggtitle("Hourly PM2.5 concentration mean in Beijing, China") +
+  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs", k = 5))
+```
+
+The figure above further confirms our believe that the PM2.5 concentration reaches the lowest during the afternoon at around 3 pm. The figure suggests that the PM2.5 concentration is at its peak during around midnight, gradually decays until afternoon (around 3 pm), and starts increasing again until the next midnight. In addition, the shaded area of the gam regression line which represents the 95% confidence level interval is fairly small.
+
+### Final generative additive model
+
+Finally, we will build a model for PM2.5 concentration with all interested variables as the predictors, i.e., hour of the day, wind speed, dew point, and temperature. Among those four predictors, we will add a cubic spline bases with 5 knots to the hour of the day, as it is not naturally linear (hour 0 and 23 are neighbors). 
+
+```{r}
+mod <- gam(pm25 ~ s(hour, bs = "cr", k = 5) + wind_spd + dew_pt + temp, data = data)
+mod_summary <- summary(mod)
+```
+
+First, we can examine the parametric coefficients of the predictors without spline bases:
+
+```{r}
+tibble(
+  "Wind speed" = mod_summary$p.coeff[2],
+  "Dew point" = mod_summary$p.coeff[3],
+  "Temperature" = mod_summary$p.coeff[4]
+) %>%
+  knitr::kable(caption = "Coefficients of wind speed, dew point, and temperature",
+               align = rep("c", 3)) %>%
+  kable_styling()
+```
+
+```{r results=FALSE}
+# The output of this chunk (raw summary of the model) will not be shown in the knitted report
+mod_summary
+```
+
+The coeffiecients of wind speed, dew point, and temperature perfectly aligns with our previous results:
+
+  1. for every 1 m/s increase in wind speed, we expect a 0.26 $\mu$g/m$^3$ decrease in PM2.5 concentration;
+  2. for every 1 $^\circ$C increase in dew point (more moisture in the air), we expect a 5.47 $mu$g/m$^3$ increase in PM2.5 concentration;
+  3. for every 1 $^\circ$C increase in temperature, we expect a 6.60 $\mu$g/m$^3$ decrease in PM2.5 concentration.
+  
+Finally, the $R^2$ value of the model is `r round(mod_summary$r.sq, 3)`, meaning that it explains `r round(mod_summary$r.sq, 3) * 100`% of the variances. In addition, the p-values for the coefficients are all less than $2 \times 10^{-16}$, meaning that there is strong evidence against the hypothesis that the predictors are meaningless. 
+
+
+## Conclusion
+
+Throughout the data exploration, we have used statistical summaries, data visualizations, and generative additive models to answer the question about the associations between PM2.5 concentrations and other meteorological features. To conclude, the data analysis suggests that PM2.5 concentration is the lowest during windy afternoons with dry air (low dew point) and low temperature. 
+
+
+## References
+
+Liang, X., Zou, T., Guo, B., Li, S., Zhang, H., Zhang, S., Huang, H. and Chen, S. X. (2015). Assessing Beijing's PM2.5 pollution: severity, weather impact, APEC and winter heating. Proceedings of the Royal Society A, 471, 20150257.
+
+What is PM2.5 and why you should care - bliss air. (n.d.). Retrieved February 28, 2022, from https://blissair.com/what-is-pm-2-5.htm 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

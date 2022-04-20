@@ -5,6 +5,8 @@ navbar:
   left:
     - text: "Overview"
       href: index.html
+    - text: "Download Report"
+      href: "./report/report.pdf"
   right:
     - icon: fa-github fa-lg
       href: https://github.com/huaqiwen/jsc370-final-proj

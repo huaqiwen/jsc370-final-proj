@@ -46,6 +46,14 @@ opts_chunk$set(
 
 ## Overview
 
+PM2.5, also known as fine particulate matter, is a form of air pollutant with a size of 2.5 microns or smaller. It is well accepted that a high PM2.5 concentration imposes great concerns to people's health. Many cities in the world suffer from consistently high PM2.5 concentration, especially in Beijing, China. Therefore, in this project, we will use a dataset of Beijing PM2.5 and other meteorological information to analyse the association between PM2.5 concentration and other measurable factors. In particular, the factors of interest are hour of the day, dew point, temperature, and wind speed.
+
+At the end of the analysis, we will use both regression models and decision trees to make predictions on PM2.5 concentration using meteorological information as predictors. This will help people better plan their trips with easily obtainable weather forecasts. 
+
+<br>
+
+## Dataset
+
 The dataset that we will use throughout this analysis comes from the [UCI Machine Learning Repository](https://archive.ics.uci.edu/ml/datasets/Beijing+PM2.5+Data) gathered by Liang, X. et al (2015). The dataset contains hourly meteorological data from 2010 Jan 1st to 2014 Dec 31st of US Embassy in Beijing, which includes information such as the PM2.5 concentration, dew point, temperature, wind speed, etc. Among those features, listed below are our interested variables and their corresponding units: 
 
   1. PM2.5 concentration (μg/m³);
