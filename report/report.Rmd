@@ -8,12 +8,20 @@ output: pdf_document
 ```{r setup, include=FALSE, message=FALSE}
 knitr::opts_chunk$set(echo = FALSE)
 
+# General
 library(dplyr)
 library(tidyr)
 library(lubridate)
 library(ggplot2)
 library(kableExtra)
+
+# Regression
 library(mgcv)
+
+# Decision tree and random forest
+library(rpart)
+library(rpart.plot)
+library(randomForest)
 ```
 
 ## Introduction
@@ -108,7 +116,7 @@ data$day_part <- cut(
 )
 ```
 
-Lastly, following the PM2.5 levels definition posted by Blissair, we define air quality levels base on PM2.5 concentration with the following rules:
+Lastly, following the PM2.5 levels definition posted by Blissair, we define air quality levels base on PM2.5 concentration with the following rules and add them as a categorical variable in the dataset:
 
   1. `good` - 0 to 50
   2. `moderate` - 51 to 100
@@ -136,20 +144,12 @@ tibble(
   kable_styling()
 ```
 
-Now we can take a glimpse at the data:
-
-```{r}
-head(data, 5) %>% 
-  knitr::kable(caption = "First 5 rows of the cleaned dataset") %>%
-  kable_styling()
-```
-
 ### Data exploration tools
 
-With the data cleaning and wrangling process finished, we can start conducting analysis with the processed dataset. In the next section, we will try to answer the goal of this analysis, finding out the association between PM2.5 concentration and some measurable factors, with methods such as creating figures with `ggplot2`, group and summarise with `dplyr`, and constructing generalized linear models with the `mgcv` implementation of `gam`. 
+With the data cleaning and wrangling process finished, we can start conducting analysis with the processed dataset. In the next section, we will try to answer the goal of this analysis, finding out the association between PM2.5 concentration and some measurable factors, with methods such as creating figures with `ggplot2`, group and summarise with `dplyr`, and constructing generalized linear models with the `mgcv` implementation of `gam`. Lastly, we will build decision trees to predict PM2.5 concentration levels using the `rpart` library. 
 
 
-## Preliminary Results
+## Results
 
 ### Overall trend of PM2.5 concentration
 
@@ -178,8 +178,8 @@ data %>%
     "PM2.5 mean" = mean(pm25),
     "PM2.5 sd"   = sd(pm25)
   ) %>%
-  knitr::kable() %>%
-  kable_styling()
+  knitr::kable(caption = "PM2.5 concentration by part of the day") %>%
+  kable_styling(latex_options = "HOLD_position")
 ```
 
 To the contrary of many people's intuition, PM2.5 concentrations is the lowest during the afternoon and highest during the morning and evening. This suggests that the air quality is worse at night. We will try to further varify this later using a generalized linear model. 
@@ -193,8 +193,8 @@ data %>%
     "PM2.5 mean" = mean(pm25),
     "PM2.5 sd"   = sd(pm25)
   ) %>%
-  knitr::kable() %>%
-  kable_styling()
+  knitr::kable(caption = "PM2.5 concentration by temperature category") %>%
+  kable_styling(latex_options = "HOLD_position")
 ```
 
 The summary statistics suggests that the PM2.5 decreases as temperature increases. This may be due to the fact that low temperatures traps small particles (PM2.5) more than high temperatures which cause the air to move upwards. This result hints a possible explanation to the observation above: the temperature in the afternoon are usually the highest which yields a lower PM2.5 concentration. 
@@ -208,8 +208,8 @@ data %>%
     "PM2.5 mean" = mean(pm25),
     "PM2.5 sd"   = sd(pm25)
   ) %>%
-  knitr::kable() %>%
-  kable_styling()
+  knitr::kable(caption = "PM2.5 concentration by dew point category") %>%
+  kable_styling(latex_options = "HOLD_position")
 ```
 
 Dew point values are the temperatures the air needs to be cooled to in order to have full relative humidity, i.e., higher dew points means higher amount of moisture in the air. The summary statistics here shows that the PM2.5 concentration is much lower during hours with low moisture in the air. 
@@ -223,8 +223,8 @@ data %>%
     "PM2.5 mean" = mean(pm25),
     "PM2.5 sd"   = sd(pm25)
   ) %>%
-  knitr::kable() %>%
-  kable_styling()
+  knitr::kable(caption = "PM2.5 concentration by wind speed category") %>%
+  kable_styling(latex_options = "HOLD_position")
 ```
 
 Note that in section *Data cleaning and wrangling*, we fond that there are no hour in our dataset falls into the "low" wind speed category, i.e., no hour has a wind speed that is 1 sd below the wind speed mean. Therefore, our summary table here only has two rows. 
@@ -235,7 +235,7 @@ From the table, we can see that hours with high wind speeds have much lower PM2.
 
 Following from previous results, we will look into the association between PM2.5 concentration and wind speed deeper. First, we will visualize the distributions of PM2.5 concentrations stacked using the two wind speed categories. Note that since PM2.5 concentration is not normally distributed, we will instead plot the log of PM2.5 distribution. 
 
-```{r warning=FALSE}
+```{r warning=FALSE, fig.height=3, fig.width=6}
 data %>%
   ggplot(aes(log(pm25), fill = wind_spd_cat)) + 
   geom_histogram(binwidth = 0.3) + 
@@ -249,7 +249,7 @@ From the stacked histogram, we can see that the mode of the high wind speed PM2.
 
 Now we will investigate the assocaition between PM2.5 concentration (represented by air quality categoies) and dew points. We can visualize the association by plotting side-by-side barchats of air quality colored by dew point category. 
 
-```{r}
+```{r, fig.height=3, fig.width=6}
 data %>%
   ggplot(aes(x = air_quality, fill = dew_pt_cat)) + 
   geom_bar(position = "dodge") +
@@ -274,12 +274,12 @@ hrly_pm25_mean <- data %>%
 head(hrly_pm25_mean, 3) %>% 
   knitr::kable(caption = "First 3 rows of the hourly PM2.5 mean dataset", 
                align = c("l", "r")) %>%
-  kable_styling()
+  kable_styling(latex_options = "HOLD_position")
 ```
 
 Now we can plot the means and build a generative additive model using a cubic regression spline bases with 5 knots (represented by the blue line the figure below). 
 
-```{r}
+```{r, fig.height=3, fig.width=6}
 hrly_pm25_mean %>%
   ggplot(aes(hour, mean)) +
   geom_point() +
@@ -309,7 +309,7 @@ tibble(
 ) %>%
   knitr::kable(caption = "Coefficients of wind speed, dew point, and temperature",
                align = rep("c", 3)) %>%
-  kable_styling()
+  kable_styling(latex_options = "HOLD_position")
 ```
 
 ```{r results=FALSE}
@@ -326,9 +326,63 @@ The coeffiecients of wind speed, dew point, and temperature perfectly aligns wit
 Finally, the $R^2$ value of the model is `r round(mod_summary$r.sq, 3)`, meaning that it explains `r round(mod_summary$r.sq, 3) * 100`% of the variances. In addition, the p-values for the coefficients are all less than $2 \times 10^{-16}$, meaning that there is strong evidence against the hypothesis that the predictors are meaningless. 
 
 
-## Conclusion
+### Decision tree on PM2.5 concentration level
+
+Recall that earlier in the *Data cleaning and wrangling* section, we have created categorical varibles for PM2.5 concentrations, i.e., "good", "moderate", "unhealthy", "very unhealthy", and "hazardous". Now we will build decision trees that utilizes meteological factors to predict this variable. The reason that we choose this method is that decision trees are generally easier to interpret and can be used as a good travel guideline for everyone. 
+
+First, we will split our dataset into training (70%) and testing (30%). This will allow us to test the performance of our decision tree without the need to worry about overfit. 
+
+```{r}
+data_size <- nrow(data)
+train_idx <- sample(1:data_size, size = 0.7 * data_size)
+data_train <- data[train_idx,]
+data_test <- data[-train_idx,]
+```
+
+After splitting the dataset, we can now build and prune the decision tree. The response variable of decision tree is the PM2.5 concentration level, and the predictors are dew point, temperature, wind speed, and time of the day ("morning", "afternoon", or "evening").
+
+```{r fig.cap="PM2.5 concentration level decision tree"}
+# Build a simple decision tree
+treefit <- rpart(
+  as.factor(air_quality) ~ dew_pt + temp + wind_spd + day_part, 
+  method = "class",
+  data = data_train
+)
+rpart.plot(treefit)
+```
+
+Since the decision tree is simple enough, we do not need to prune it. Since the tree was built using only the training dataset, we can now use it to predict air quality (PM2.5 concentration levels) on the test dataset and evaluate its performance. The proportion of correct predictions in the test dataset is 44%, which is adequate as guessing would yield a 20% accuracy. 
+
+From the decision tree plot above, we can see that the decision boundaries aligns perfectly with our previous results from the regression model. To be specific, the decision boundaries show that lower dew pooint and temperature indeed leads to lower PM2.5 concentrations.
+
+```{r results=FALSE}
+# Make predictions on the test dataset, compute accuracy
+pred_tree <- predict(treefit, data_test, type = "class")
+mean(pred_tree == data_test$air_quality)
+```
+
+### Random forest on PM2.5 concentration level
+
+Now we can improve our model by building a random forest consisting many simple decision trees to make more accurate predictions on PM2.5 concentration levels. After building the random forest, we find that accuracy on the test dataset is now 50%. 
+
+```{r results=FALSE}
+# Build a random forest
+rf <- randomForest(
+  as.factor(air_quality) ~ dew_pt + temp + wind_spd + day_part, 
+  method = "class",
+  data = data_train
+)
+
+pred_rf <- predict(rf, data_test, type = "class")
+mean(pred_rf == data_test$air_quality)
+```
+
+
+## Conclusion and Summary
 
 Throughout the data exploration, we have used statistical summaries, data visualizations, and generative additive models to answer the question about the associations between PM2.5 concentrations and other meteorological features. To conclude, the data analysis suggests that PM2.5 concentration is the lowest during windy afternoons with dry air (low dew point) and low temperature. 
+
+In addition to the above information, we have also successfully built a random forest prediction model with 50% accuracy on the test dataset. Given that our categorization of air quality is rather fine with 5 categories, this model accomplishes the goal of helping people predict PM2.5 concentration levels using time and forecastable meteological information. 
 
 
 ## References
