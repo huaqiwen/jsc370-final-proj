@@ -353,7 +353,7 @@ rpart.plot(treefit)
 
 Since the decision tree is simple enough, we do not need to prune it. Since the tree was built using only the training dataset, we can now use it to predict air quality (PM2.5 concentration levels) on the test dataset and evaluate its performance. The proportion of correct predictions in the test dataset is 44%, which is adequate as guessing would yield a 20% accuracy. 
 
-From the decision tree plot above, we can see that the decision boundaries aligns perfectly with our previous results from the regression model. To be specific, the decision boundaries show that lower dew pooint and temperature indeed leads to lower PM2.5 concentrations.
+From the decision tree plot above, we can see that the decision boundaries aligns perfectly with our previous results from the regression model. To be specific, the decision boundaries show that lower dew point and higher temperature indeed leads to lower PM2.5 concentrations.
 
 ```{r results=FALSE}
 # Make predictions on the test dataset, compute accuracy
@@ -380,7 +380,7 @@ mean(pred_rf == data_test$air_quality)
 
 ## Conclusion and Summary
 
-Throughout the data exploration, we have used statistical summaries, data visualizations, and generative additive models to answer the question about the associations between PM2.5 concentrations and other meteorological features. To conclude, the data analysis suggests that PM2.5 concentration is the lowest during windy afternoons with dry air (low dew point) and low temperature. 
+Throughout the data exploration, we have used statistical summaries, data visualizations, and generative additive models to answer the question about the associations between PM2.5 concentrations and other meteorological features. To conclude, the data analysis suggests that PM2.5 concentration is the lowest during windy afternoons with dry air (low dew point) and high temperature. 
 
 In addition to the above information, we have also successfully built a random forest prediction model with 50% accuracy on the test dataset. Given that our categorization of air quality is rather fine with 5 categories, this model accomplishes the goal of helping people predict PM2.5 concentration levels using time and forecastable meteological information. 
 
